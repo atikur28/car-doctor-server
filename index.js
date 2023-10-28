@@ -27,6 +27,7 @@ async function run() {
     await client.connect();
 
     const servicesCollection = client.db('carDoctor').collection('services');
+    const checkoutCollection = client.db('carDoctor').collection('checkouts');
 
     app.get('/services', async(req, res) => {
         const cursor = servicesCollection.find();
@@ -42,6 +43,42 @@ async function run() {
         }
         const result = await servicesCollection.findOne(query, options);
         res.send(result);
+    })
+
+    app.get('/checkouts', async (req, res) => {
+      let query = {};
+      if(req.query?.email){
+        query = {email: req.query.email}
+      }
+      const cursor = checkoutCollection.find(query);
+      const result = await cursor.toArray();
+      res.send(result);
+    })
+
+    app.post('/checkouts', async (req, res) => {
+      const checkout = req.body;
+      const result = await checkoutCollection.insertOne(checkout);
+      res.send(result)
+    })
+
+    app.patch('/checkouts/:id', async (req, res) => {
+      const id = req.params.id;
+      const filter = {_id: new ObjectId(id)};
+      const updatedCheckout = req.body;
+      const updatedDoc = {
+        $set: {
+          status: updatedCheckout.status
+        },
+      };
+      const result = await checkoutCollection.updateOne(filter, updatedDoc);
+      res.send(result);
+    })
+
+    app.delete('/checkouts/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = {_id: new ObjectId(id)};
+      const result = await checkoutCollection.deleteOne(query);
+      res.send(result);
     })
 
     // Send a ping to confirm a successful connection
