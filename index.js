@@ -1,13 +1,19 @@
 const express = require('express');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
+const cookieParser = require('cookie-parser');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config();
 const app = express();
 const port = process.env.PORT || 5000;
 
 // middleware
-app.use(cors());
+app.use(cors({
+  origin: ['https://car-doctor-28.surge.sh'],
+  credentials: true
+}));
 app.use(express.json());
+app.use(cookieParser());
 
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.m78kxrk.mongodb.net/?retryWrites=true&w=majority`;
@@ -21,6 +27,26 @@ const client = new MongoClient(uri, {
   }
 });
 
+// middleware
+const logger = async (req, res, next) => {
+  console.log('Called:', req.host, req.originalUrl);
+  next();
+}
+
+const verifyToken = async (req, res, next) => {
+  const token = req.cookies?.token;
+  if(!token){
+    return res.status(401).send({message: 'Unauthorized'});
+  }
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (error, decoded) => {
+    if(error){
+      return res.status(401).send({message: 'Unauthorized'});
+    }
+    req.user = decoded;
+    next();
+  })
+}
+
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
@@ -29,7 +55,18 @@ async function run() {
     const servicesCollection = client.db('carDoctor').collection('services');
     const checkoutCollection = client.db('carDoctor').collection('checkouts');
 
-    app.get('/services', async(req, res) => {
+    app.post('/jwt', logger, async (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {expiresIn: '1h'})
+      res
+      .cookie('token', token, {
+        httpOnly: true,
+        secure: false
+      })
+      .send({success: true});
+    })
+
+    app.get('/services', logger, async(req, res) => {
         const cursor = servicesCollection.find();
         const result = await cursor.toArray();
         res.send(result);
@@ -45,7 +82,10 @@ async function run() {
         res.send(result);
     })
 
-    app.get('/checkouts', async (req, res) => {
+    app.get('/checkouts', logger, verifyToken, async (req, res) => {
+      if(req.query.email !== req.user.email){
+        return res.status(403).send({message: 'Forbidden access!'})
+      }
       let query = {};
       if(req.query?.email){
         query = {email: req.query.email}
